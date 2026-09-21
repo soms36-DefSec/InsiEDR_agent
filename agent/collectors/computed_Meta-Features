@@ -1,0 +1,10 @@
+## Phase 2 — Computed Meta-Features
+
+> These are **not raw CERT features**. The endpoint agent does not emit decision outputs; it only notes collection-derived long-window fields that must be computed outside the agent from received telemetry.
+
+| S.No. | Derived Feature | Computed From | Description | Captured(Y/N) | Confidence | Telemetry Source / Technical Reason | Scenario Relevance |
+|---|---|---|---|---|---|---|---|
+| 58 | daily_files_to_removable_7d_sum | Computed | 7-day cumulative removable media file transfers | Yes | 100% | Rolling SUM over daily_files_to_removable_count — pure computation on existing features | S1, S2 |
+
+> **Note**: `daily_external_email_volume_7d_sum` from Phase 2 spec is **excluded** from all counts — requires email data which is out of scope.
+> **Note**: `daily_files_to_removable_7d_sum` appears only here (not in Device section) to avoid double-counting.

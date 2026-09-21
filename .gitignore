@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.cpython-*.pyc
+
+# Caches and tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.zip
+
+# Local environment variables and sensitive configs
+.env
+.env.local
+.env.*.local
+!.env.example
+insiedr_agent.ini
+
+# Agent Local Queue and Logs
+agent_queue/
+.insiedr_queue/
+/queue/
+*.log
+logs/
+
+# IDE / Editor noise
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+desktop.ini

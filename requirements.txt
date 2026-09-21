@@ -1,0 +1,18 @@
+# Core Cryptography & Security
+cryptography>=41.0.0
+
+# Configuration & Environment
+python-dotenv>=1.0.0
+
+# HTTP Telemetry Transport
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Windows System & Event Log APIs
+pywin32>=306; sys_platform == "win32"
+
+# PyInstaller Packaging
+pyinstaller>=6.0.0
+
+# Testing
+pytest>=7.4.0
