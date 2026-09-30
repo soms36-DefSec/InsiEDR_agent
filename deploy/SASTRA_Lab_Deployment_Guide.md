@@ -22,16 +22,16 @@ flowchart TD
         SVC -->|Offline Buffer| SPL
     end
 
-    subgraph CampusNet["SASTRA Campus / Lab LAN (TCP Port 5000 / 80)"]
+    subgraph CampusNet["SASTRA Campus / Lab LAN (TCP Port 80 / 5000)"]
         ENC["AES-256-GCM Encrypted Payloads"]
     end
 
-    subgraph CentralServer["Central InsiEDR Server Workstation"]
+    subgraph CentralServer["Central InsiEDR Server (172.16.22.198)"]
         API["FastAPI Telemetry Ingestion"]
         DB[("PostgreSQL 16<br/>Entities & Risk Scores")]
         CH[("ClickHouse<br/>Time-Series Telemetry")]
         RD[("Redis Buffer<br/>In-Memory Queue")]
-        UI["Web Dashboard<br/>http://&lt;SERVER_IP&gt;:5000"]
+        UI["Web Dashboard<br/>http://172.16.22.198"]
 
         API --> DB
         API --> CH
@@ -52,8 +52,8 @@ Before deploying on any machine, verify the following prerequisites:
 | Item | Requirement | Why It Matters |
 | :--- | :--- | :--- |
 | **Server Hardware** | Quad-core CPU, 8 GB+ RAM, 50 GB+ free disk space | Stores telemetry for 30–60 lab PCs over 14 days. |
-| **Server Network** | Static LAN IP (e.g., `10.12.34.50` or `192.168.1.100`) | If the server IP changes, agents cannot reach it. |
-| **Server Firewall** | Inbound TCP Port `5000` (or `80`) allowed | Prevents Windows Defender Firewall from dropping agent logs. |
+| **Server Network** | Static LAN IP (`172.16.22.198`) | Central InsiEDR deployment IP. |
+| **Server Firewall** | Inbound TCP Port `80` (Nginx) & `5000` allowed | Ensures agent telemetry payloads are accepted without blocking. |
 | **Lab PC OS** | Windows 10 or Windows 11 (64-bit) | Native Rust sensors are compiled for Windows 64-bit (`x86_64`). |
 | **Lab Permissions** | Local Administrator access on Lab PCs | Needed to register the background Windows Service. |
 | **Reboot Freeze Software** | If *Deep Freeze* or *Shadow Defender* is active, thaw during install | Otherwise, the service will disappear when the PC restarts. |
@@ -67,16 +67,18 @@ Before deploying on any machine, verify the following prerequisites:
 
 The server receives encrypted payloads, stores them in PostgreSQL and ClickHouse, and hosts the Web Dashboard.
 
-### Step 3.1: Find & Fix the Server's IP Address
-1. On the Server machine, press `Windows Key + R`, type `cmd`, and press Enter.
-2. Type `ipconfig` and press Enter.
-3. Note down your **IPv4 Address** (e.g., `10.12.34.56` or `192.168.1.100`).
-4. *Recommendation:* Request your network administrator or lab in-charge to assign a DHCP reservation or static IP to this machine for the duration of the 14 days.
+### Step 3.1: Server Deployment IP
+The server's designated laboratory IP is:
+```
+172.16.22.198
+```
+*Note:* All agent packages are pre-configured to communicate with `http://172.16.22.198` directly on Port 80 (routed via Nginx reverse proxy).
 
-### Step 3.2: Allow Port 5000 Through Windows Firewall
-Run this single command in an Administrator Command Prompt on the server:
+### Step 3.2: Allow Port 80 & 5000 Through Windows Firewall
+Run these commands in an Administrator Command Prompt on the server:
 ```cmd
-netsh advfirewall firewall add rule name="InsiEDR Server Port 5000" dir=in action=allow protocol=TCP localport=5000
+netsh advfirewall firewall add rule name="InsiEDR Ingress Port 80" dir=in action=allow protocol=TCP localport=80
+netsh advfirewall firewall add rule name="InsiEDR Backend Port 5000" dir=in action=allow protocol=TCP localport=5000
 ```
 
 ### Step 3.3: Start the InsiEDR Server
@@ -107,8 +109,8 @@ If running without Docker directly on Windows:
 
 ### Step 3.4: Verify Server Health
 Open Google Chrome or any browser on the server (or another PC on the same Wi-Fi/LAN) and visit:
-* **Dashboard:** `http://localhost:5000` (or `http://<SERVER_IP>:5000`)
-* **API Health Check:** `http://localhost:5000/api/health`
+* **Dashboard:** `http://172.16.22.198` (or `http://localhost:5000` on the server itself)
+* **API Health Check:** `http://172.16.22.198/api/health`
 
 You will see the **InsiEDR Enterprise Threat Defense Center** web interface.
 
@@ -123,25 +125,24 @@ The complete deployment bundle is located at:
 * `insiedr-service.exe` — Primary Session 0 Windows Service (silent, native Rust).
 * `insiedr-broker.exe` — Desktop helper capturing keystroke biometrics in user session.
 * `insiedr-watchdog.exe` — Anti-tamper supervisor daemon.
-* `agent_config.json` — Agent configuration file.
+* `agent_config.json` — Pre-configured agent configuration file.
 * `install.bat` — One-click silent installer.
 * `uninstall.bat` — Clean uninstaller.
 * `status.bat` — Health verification script.
 
-### Step 4.1: Configure Server IP Address
-Before copying the folder to USB or lab machines, configure the server IP address once:
-1. Open `agent_config.json` in Notepad.
-2. Replace `127.0.0.1` with your server's actual LAN IP address:
-   ```json
-   {
-     "server_url": "http://10.12.34.56:5000",
-     "crypto_scheme": "aes-256-gcm",
-     "key_id": "default",
-     "heartbeat_interval_secs": 5,
-     "spool_db_path": "C:\\ProgramData\\InsiEDR\\spool.db"
-   }
-   ```
-3. Save and close the file (`Ctrl + S`).
+### Step 4.1: Verify Pre-Configured Server IP
+The configuration file `agent_config.json` is **already pre-configured** for the deployment server:
+```json
+{
+  "server_url": "http://172.16.22.198",
+  "crypto_scheme": "aes-256-gcm",
+  "key_id": "default",
+  "aes_key_base64": "5Ui8tuHn2kDMrCreumXzRVRFjeUg6aB4DzpfBPAactc=",
+  "heartbeat_interval_secs": 5,
+  "spool_db_path": "C:\\ProgramData\\InsiEDR\\spool.db"
+}
+```
+No manual editing is required on individual lab machines unless the server IP changes.
 
 ---
 
@@ -171,9 +172,9 @@ Before copying the folder to USB or lab machines, configure the server IP addres
 ### Method B: Network Share Installation (Best for 30–60+ PCs)
 Instead of walking around with a USB drive, host the package over the lab network:
 1. On the Server or Master PC, right-click the `InsiEDR-Package` folder $\rightarrow$ **Properties** $\rightarrow$ **Sharing** $\rightarrow$ **Share...**
-2. Add `Everyone` with **Read** permissions. Note the network path (e.g. `\\10.12.34.56\InsiEDR-Package`).
+2. Add `Everyone` with **Read** permissions. Note the network path (e.g. `\\172.16.22.198\InsiEDR-Package`).
 3. On any lab PC:
-   * Press `Windows Key + R`, enter `\\10.12.34.56\InsiEDR-Package`.
+   * Press `Windows Key + R`, enter `\\172.16.22.198\InsiEDR-Package`.
    * Right-click `install.bat` $\rightarrow$ **"Run as administrator"**.
 
 ---
@@ -184,7 +185,7 @@ For advanced lab administrators with Administrator credentials across all system
 $LabComputers = @("LAB-PC01", "LAB-PC02", "LAB-PC03", "LAB-PC04")
 foreach ($pc in $LabComputers) {
     Write-Host "[*] Deploying to $pc..."
-    Copy-Item -Path "\\10.12.34.56\InsiEDR-Package" -Destination "\\$pc\C$\Temp\InsiEDR-Package" -Recurse -Force
+    Copy-Item -Path "\\172.16.22.198\InsiEDR-Package" -Destination "\\$pc\C$\Temp\InsiEDR-Package" -Recurse -Force
     Invoke-Command -ComputerName $pc -ScriptBlock {
         cmd.exe /c "C:\Temp\InsiEDR-Package\install.bat"
     }
@@ -213,7 +214,7 @@ To confirm the agent is working properly on any lab PC:
 ### Daily 3-Minute Routine (Morning Check)
 Every morning, the lab coordinator or student in-charge should spend 3 minutes checking the central dashboard:
 
-1. Open `http://<SERVER_IP>:5000` in Google Chrome.
+1. Open `http://172.16.22.198` in Google Chrome.
 2. **Fleet Overview Tab**:
    * Verify the number of "Active Agents" matches the lab PCs currently turned on.
    * If a PC was turned off overnight, its card will say "OFFLINE". As soon as students boot the PC in the morning, it will flip to "ONLINE" within 5 seconds automatically.
@@ -241,12 +242,12 @@ At the end of the 10–14 day study period, export your research datasets direct
 
 | Dataset Type | Download URL | Description |
 | :--- | :--- | :--- |
-| **Keystroke Biometrics (Excel)** | `http://<SERVER_IP>:5000/api/v1/export/keystrokes.xlsx` | Key hold duration, flight time, typing speed cadence. |
-| **Keystroke Biometrics (CSV)** | `http://<SERVER_IP>:5000/api/v1/export/keystrokes.csv` | Comma-separated format for Python / Pandas / R. |
-| **All Sensor Features (Excel)** | `http://<SERVER_IP>:5000/api/v1/export/features.xlsx` | High-level aggregated behavioral feature vectors. |
-| **All Sensor Features (CSV)** | `http://<SERVER_IP>:5000/api/v1/export/features.csv` | Tabular feature rows ready for ML modeling. |
-| **Raw Telemetry Logs (CSV)** | `http://<SERVER_IP>:5000/api/v1/export/logs.csv` | Full raw event stream (process, file, network, auth). |
-| **Full ML Training Dataset** | `http://<SERVER_IP>:5000/api/v1/export/training-dataset.xlsx` | Pre-labeled baseline vs anomalous session records. |
+| **Keystroke Biometrics (Excel)** | `http://172.16.22.198/api/v1/export/keystrokes.xlsx` | Key hold duration, flight time, typing speed cadence. |
+| **Keystroke Biometrics (CSV)** | `http://172.16.22.198/api/v1/export/keystrokes.csv` | Comma-separated format for Python / Pandas / R. |
+| **All Sensor Features (Excel)** | `http://172.16.22.198/api/v1/export/features.xlsx` | High-level aggregated behavioral feature vectors. |
+| **All Sensor Features (CSV)** | `http://172.16.22.198/api/v1/export/features.csv` | Tabular feature rows ready for ML modeling. |
+| **Raw Telemetry Logs (CSV)** | `http://172.16.22.198/api/v1/export/logs.csv` | Full raw event stream (process, file, network, auth). |
+| **Full ML Training Dataset** | `http://172.16.22.198/api/v1/export/training-dataset.xlsx` | Pre-labeled baseline vs anomalous session records. |
 
 ### Exporting via the Web Dashboard:
 1. Click the **Export** button located in the top navigation bar.
@@ -281,7 +282,7 @@ Once all datasets have been verified and backed up, remove the sensors from lab 
 * **Cause 3:** Network connectivity issue between lab PC and server.
   * *Fix:* Open PowerShell on the lab PC and run:
     ```powershell
-    Test-NetConnection -ComputerName <SERVER_IP> -Port 5000
+    Test-NetConnection -ComputerName 172.16.22.198 -Port 80
     ```
     If `TcpTestSucceeded : True`, the connection is working.
 
