@@ -6,4 +6,4 @@ pub mod transport;
 pub mod control;
 pub mod collectors;
 pub mod etw;
-pub mod engine;
+

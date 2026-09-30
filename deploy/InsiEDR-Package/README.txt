@@ -20,7 +20,7 @@ FILES IN THIS PACKAGE:
 HOW TO DEPLOY ON A LAB PC:
 ------------------------------------------------------------------------
 Step 1: 'agent_config.json' is ALREADY PRE-CONFIGURED for SASTRA Server:
-        "server_url": "http://172.16.22.198"
+        "server_url": "http://172.16.22.198:5000"
 
 Step 2: Right-click 'install.bat' and select "Run as administrator".
 
@@ -33,7 +33,7 @@ Step 3: That's it!
 ------------------------------------------------------------------------
 HOW TO MANAGE FROM THE WEB DASHBOARD:
 ------------------------------------------------------------------------
-Open your browser to: http://172.16.22.198
+Open your browser to: http://172.16.22.198:5000
 
 1. Live Fleet Monitoring:
    - View connected PCs, CPU/RAM utilization, active usernames, and health.

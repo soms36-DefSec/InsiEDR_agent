@@ -1,23 +1,11 @@
 use insiedr_core::collectors::activity::ActivityCollector;
-use insiedr_core::collectors::browser_history::BrowserHistoryCollector;
-use insiedr_core::collectors::clipboard::ClipboardCollector;
-use insiedr_core::collectors::decoy::DecoyCollector;
-use insiedr_core::collectors::dns::DnsCollector;
-use insiedr_core::collectors::driver_monitor::DriverMonitorCollector;
-use insiedr_core::collectors::email::EmailCollector;
 use insiedr_core::collectors::file_integrity::FileIntegrityCollector;
 use insiedr_core::collectors::keystroke_biometrics::KeystrokeBiometricsCollector;
 use insiedr_core::collectors::logon::LogonCollector;
-use insiedr_core::collectors::lsass::LsassCollector;
-use insiedr_core::collectors::named_pipe::NamedPipeCollector;
 use insiedr_core::collectors::network::NetworkCollector;
-use insiedr_core::collectors::persistence::PersistenceCollector;
 use insiedr_core::collectors::process_watcher::ProcessWatcherCollector;
 use insiedr_core::collectors::short_term_edr::ShortTermEdrCollector;
 use insiedr_core::collectors::usb_devices::UsbDeviceCollector;
-use insiedr_core::collectors::usn::UsnCollector;
-use insiedr_core::collectors::wmi_activity::WmiActivityCollector;
-use insiedr_core::collectors::memory_scanner::MemoryScannerCollector;
 use insiedr_core::collectors::Collector;
 use insiedr_core::control::execute_remote_task;
 use insiedr_core::core::config::AgentConfig;
@@ -143,28 +131,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 5. Initialize Transport Client
     let transport = Arc::new(InsiTransportClient::new(&config.server_url));
 
-    // 6. Initialize all 20 telemetry collectors
+    // 6. Initialize ML Dataset Telemetry Collector Suite (8 Core Behavioral Sensors)
     let collectors: Vec<Box<dyn Collector>> = vec![
-        Box::new(LogonCollector::new()),
-        Box::new(NetworkCollector::new()),
-        Box::new(UsbDeviceCollector::new()),
-        Box::new(BrowserHistoryCollector::new()),
         Box::new(KeystrokeBiometricsCollector::new()),
-        Box::new(ActivityCollector::new()),
-        Box::new(ClipboardCollector::new()),
-        Box::new(NamedPipeCollector::new()),
-        Box::new(DriverMonitorCollector::new()),
-        Box::new(PersistenceCollector::new()),
-        Box::new(DecoyCollector::new()),
-        Box::new(UsnCollector::new()),
+        Box::new(LogonCollector::new()),
+        Box::new(ShortTermEdrCollector::new()),
         Box::new(ProcessWatcherCollector::new()),
         Box::new(FileIntegrityCollector::new()),
-        Box::new(ShortTermEdrCollector::new()),
-        Box::new(EmailCollector::new()),
-        Box::new(DnsCollector::new()),
-        Box::new(LsassCollector::new()),
-        Box::new(WmiActivityCollector::new()),
-        Box::new(MemoryScannerCollector::new()),
+        Box::new(UsbDeviceCollector::new()),
+        Box::new(NetworkCollector::new()),
+        Box::new(ActivityCollector::new()),
     ];
 
     let once_mode = env::args().any(|arg| arg == "--once");
