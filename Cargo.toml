@@ -1,0 +1,83 @@
+[workspace]
+members = [
+    ".",
+    "crates/insiedr-amsi",
+]
+
+[package]
+name = "insiedr-agent"
+version = "2.0.0"
+edition = "2021"
+authors = ["InsiEDR Security Team"]
+description = "Enterprise-Grade Windows Native EDR Endpoint Sensor"
+
+[lib]
+name = "insiedr_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "insiedr-service"
+path = "src/bin/insiedr-service.rs"
+
+[[bin]]
+name = "insiedr-broker"
+path = "src/bin/insiedr-broker.rs"
+
+[[bin]]
+name = "insiedr-watchdog"
+path = "src/bin/insiedr-watchdog.rs"
+
+[dependencies]
+# Windows API bindings
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Cryptography",
+    "Win32_System_EventLog",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Ioctl",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Registry",
+    "Win32_System_Services",
+    "Win32_System_Threading",
+    "Win32_System_Shutdown",
+    "Win32_System_JobObjects",
+    "Win32_System_Pipes",
+    "Win32_System_SystemInformation",
+    "Win32_System_IO",
+    "Win32_Security_Authorization",
+    "Win32_System_ProcessStatus",
+    "Win32_System_DataExchange",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_Diagnostics_Etw",
+    "Win32_System_Time",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+] }
+
+# Cryptography & Key Management
+ring = "0.17"
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+base64 = "0.22"
+zeroize = { version = "1.8", features = ["derive"] }
+sha2 = "0.10"
+hmac = "0.12"
+uuid = { version = "1.10", features = ["v4", "fast-rng"] }
+
+# Spooling & Storage (Bundled SQLite with WAL)
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Networking & Async Runtime
+tokio = { version = "1.40", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Serialization & Datetimes
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+log = "0.4"
+env_logger = "0.11"

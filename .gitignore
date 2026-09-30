@@ -1,6 +1,7 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.cpython-*.pyc
+*.pyc
 
 # Caches and tests
 .pytest_cache/
@@ -40,3 +41,13 @@ logs/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Rust build artifacts
+target/
+
+# Local SQLite spool databases
+spool.db
+spool.db-shm
+spool.db-wal
+*.db-shm
+*.db-wal

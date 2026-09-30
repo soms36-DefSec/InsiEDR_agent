@@ -1,0 +1,8 @@
+{
+  "server_url": "http://172.16.22.198:5000",
+  "crypto_scheme": "aes-256-gcm",
+  "key_id": "default",
+  "aes_key_base64": "5Ui8tuHn2kDMrCreumXzRVRFjeUg6aB4DzpfBPAactc=",
+  "heartbeat_interval_secs": 5,
+  "spool_db_path": "C:\\ProgramData\\InsiEDR\\spool.db"
+}
