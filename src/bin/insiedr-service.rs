@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use insiedr_core::collectors::activity::ActivityCollector;
 use insiedr_core::collectors::file_integrity::FileIntegrityCollector;
 use insiedr_core::collectors::keystroke_biometrics::KeystrokeBiometricsCollector;
@@ -10,6 +12,7 @@ use insiedr_core::collectors::Collector;
 use insiedr_core::control::execute_remote_task;
 use insiedr_core::core::config::AgentConfig;
 use insiedr_core::core::governor::set_cpu_rate_cap;
+use insiedr_core::core::state_cache::{PendingState, TelemetryStateCache};
 use insiedr_core::crypto::aesgcm::AesGcmEngine;
 use insiedr_core::crypto::hpke::HpkeEngine;
 use insiedr_core::protocol::envelope::WireEnvelope;
@@ -25,7 +28,7 @@ use std::collections::HashMap;
 use std::env;
 use std::net::UdpSocket;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 /// Resolves the machine's outbound LAN IP by probing a UDP route to the server.
@@ -51,6 +54,99 @@ fn resolve_local_ip(server_url: &str) -> String {
         .and_then(|s| s.local_addr())
         .map(|a| a.ip().to_string())
         .unwrap_or_else(|_| "127.0.0.1".to_string())
+}
+
+/// Heartbeats run separately so quiet telemetry and slow/retrying uploads do not
+/// suppress fleet liveness or the existing server-command downlink.
+async fn heartbeat_cycle(
+    config: &AgentConfig,
+    local_ip: &str,
+    transport: &InsiTransportClient,
+    spooler: &SqliteSpooler,
+) {
+    let hb_req = HeartbeatRequest {
+        agent_id: config.agent_id.clone(),
+        hostname: config.hostname.clone(),
+        ip_address: local_ip.to_string(),
+        agent_version: "2.0.0".to_string(),
+        status: "healthy".to_string(),
+        metrics: HostMetrics {
+            cpu_percent: 0.2,
+            memory_mb: 8.5,
+            spool_queue_depth: spooler.queue_depth(),
+        },
+        config_version: "v1.0".to_string(),
+    };
+    match transport.send_heartbeat(&hb_req).await {
+        Ok(hb_resp) => {
+            for task in hb_resp.pending_tasks {
+                println!("[ControlPlane] Executing server task: {} (id={})", task.command, task.task_id);
+                let (exit_code, msg) = execute_remote_task(&task, local_ip);
+                let result = TaskResultPayload {
+                    agent_id: config.agent_id.clone(),
+                    task_id: task.task_id,
+                    status: if exit_code == 0 { "success".into() } else { "failed".into() },
+                    exit_code,
+                    message: msg,
+                    timestamp: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                };
+                let _ = transport.send_task_result(&result).await;
+            }
+        }
+        Err(e) => eprintln!("[ControlPlane] Heartbeat failed (non-fatal): {e}"),
+    }
+}
+
+/// Retry durable records even when this collection cycle produces no delta.
+/// Malformed records stay queued for repair; they are never silently discarded.
+async fn drain_spool(
+    spooler: &SqliteSpooler,
+    transport: &InsiTransportClient,
+    state_cache: &mut TelemetryStateCache,
+    next_upload_at: &mut Instant,
+) {
+    if Instant::now() < *next_upload_at { return; }
+    let backlog = match spooler.peek_batch(10) {
+        Ok(records) => records,
+        Err(e) => {
+            eprintln!("[Spool] Unable to read pending telemetry: {e}");
+            *next_upload_at = Instant::now() + Duration::from_secs(5);
+            return;
+        }
+    };
+    for rec in backlog {
+        let headers = match serde_json::from_str::<HashMap<String, String>>(&rec.headers_json) {
+            Ok(headers) => headers,
+            Err(e) => {
+                eprintln!("[Spool] Retaining malformed record {} for repair: {e}", rec.payload_id);
+                *next_upload_at = Instant::now() + Duration::from_secs(60);
+                return;
+            }
+        };
+        if let Err(e) = transport.send_telemetry(&rec.envelope_json, &headers).await {
+            eprintln!("[Transport] Pending envelope {} not acknowledged: {e}", rec.payload_id);
+            if let Err(e) = spooler.increment_retry(rec.id) {
+                eprintln!("[Spool] Could not update retry count: {e}");
+            }
+            let delay = 5u64 * (1u64 << rec.retry_count.clamp(0, 6) as u32);
+            *next_upload_at = Instant::now() + Duration::from_secs(delay.min(300));
+            return;
+        }
+        // Deleting only after the matching durable ACK makes a crash before this
+        // point retry the same payload ID, which the server handles idempotently.
+        if let Err(e) = spooler.acknowledge(rec.id) {
+            eprintln!("[Spool] ACK received but record deletion failed: {e}");
+            *next_upload_at = Instant::now() + Duration::from_secs(5);
+            return;
+        }
+        if let Some(state_json) = rec.state_json {
+            match serde_json::from_str::<PendingState>(&state_json) {
+                Ok(pending) => state_cache.commit_transmission(pending),
+                Err(e) => eprintln!("[Spool] State metadata invalid; baseline will be resent: {e}"),
+            }
+        }
+        println!("[Transport] Acknowledged envelope {} (HTTP 202)", rec.payload_id);
+    }
 }
 
 #[tokio::main]
@@ -145,15 +241,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let once_mode = env::args().any(|arg| arg == "--once");
 
+    let mut state_cache = TelemetryStateCache::new(config.snapshot_interval_secs);
+    let mut next_upload_at = Instant::now();
+    let mut collection_interval = tokio::time::interval(Duration::from_secs(config.heartbeat_interval_secs.max(1)));
+    collection_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    if !once_mode {
+        let hb_config = config.clone();
+        let hb_transport = transport.clone();
+        let hb_spooler = spooler.clone();
+        let hb_ip = local_ip.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(hb_config.heartbeat_interval_secs.max(1)));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                heartbeat_cycle(&hb_config, &hb_ip, &hb_transport, &hb_spooler).await;
+            }
+        });
+    }
+
     // ─── Main Collection Loop ────────────────────────────────────────────────
     // DESIGN PRINCIPLE: This loop ONLY observes and transmits.
     // It NEVER takes autonomous action against the host system.
-    // Response actions (isolate/kill/lock/rollback) happen ONLY in Step D
+    // Response actions (isolate/kill/lock/rollback) happen ONLY in the heartbeat task
     // when the server explicitly commands them via heartbeat task downlink.
     loop {
+        collection_interval.tick().await;
+        drain_spool(&spooler, &transport, &mut state_cache, &mut next_upload_at).await;
         let payload_id = Uuid::new_v4().to_string();
-        let now = chrono::Utc::now()
-            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true); // e.g. 2026-10-01T04:30:00.123Z
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let mut pending = state_cache.begin_batch(Instant::now());
 
         // Step A: Collect Telemetry — pure passive observation, zero host interference
         let mut telemetry = TelemetryPayload::with_username(
@@ -165,11 +282,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         for c in &collectors {
-            let res = c.collect();
+            let mut res = c.collect();
+            res.prune_null_fields();
+            if res.hostname.is_empty() { res.hostname = config.hostname.clone(); }
             println!("[Collector] {} → {}", res.name, res.status);
-            telemetry.add_collector(res);
+            let bypass = !config.telemetry_optimization_enabled
+                || c.is_security_event_collector()
+                || c.has_security_events(&res)
+                || c.has_active_threat(&res);
+            if state_cache.stage_result(&mut pending, &res, bypass)? {
+                telemetry.add_collector(res);
+            }
         }
 
+        if !telemetry.collectors.is_empty() {
         let plaintext_json = telemetry.to_canonical_json_bytes()?;
 
         // Step B: Encrypt Envelope (AES-256-GCM or HPKE)
@@ -194,87 +320,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let envelope_json = serde_json::to_string(&envelope)?;
 
-        // Step C: Transmit — with offline SQLite spool fallback
-        println!("[Transport] Emitting telemetry envelope {} to /api/logs...", payload_id);
-        match transport.send_telemetry(&envelope_json, &custom_headers).await {
-            Ok(_) => {
-                println!("[Transport] ✓ Envelope delivered (HTTP 200/202)");
-                // Drain offline backlog in batches of 10
-                if let Ok(backlog) = spooler.peek_batch(10) {
-                    for rec in backlog {
-                        if let Ok(hdrs) = serde_json::from_str::<HashMap<String, String>>(&rec.headers_json) {
-                            if transport.send_telemetry(&rec.envelope_json, &hdrs).await.is_ok() {
-                                println!("[Spool] ✓ Backlog record {} uploaded", rec.payload_id);
-                                let _ = spooler.acknowledge(rec.id);
-                            } else {
-                                let _ = spooler.increment_retry(rec.id);
-                                break;
-                            }
-                        } else {
-                            let _ = spooler.acknowledge(rec.id);
-                        }
-                    }
+        // Persist before network I/O, including the exact state staged in this envelope.
+        let headers_json = serde_json::to_string(&custom_headers)?;
+        let state_json = serde_json::to_string(&pending)?;
+        loop {
+            match spooler.enqueue_with_state(&payload_id, &envelope_json, &headers_json, 1, Some(&state_json)) {
+                Ok(()) => break,
+                Err(e) => {
+                    // Apply backpressure while retaining this collected batch in memory.
+                    // A full/damaged disk cannot support an unlimited no-loss guarantee.
+                    eprintln!("[Spool] Cannot persist telemetry; collection paused until storage recovers: {e}");
+                    drain_spool(&spooler, &transport, &mut state_cache, &mut next_upload_at).await;
+                    tokio::time::sleep(Duration::from_secs(5)).await;
                 }
-            }
-            Err(e) => {
-                eprintln!("[Transport] ✗ Transmission failed: {e} — queuing to spool");
-                let headers_json = serde_json::to_string(&custom_headers)?;
-                let _ = spooler.enqueue(&payload_id, &envelope_json, &headers_json, 1);
             }
         }
-
-        // Step D: Heartbeat — the ONLY source of response actions on this agent.
-        //   Server can send: isolate_host, unisolate_host, kill_process,
-        //                    lock_workstation, create_shadow, rollback_directory.
-        //   The agent executes ONLY what the server commands here.
-        let hb_req = HeartbeatRequest {
-            agent_id: config.agent_id.clone(),
-            hostname: config.hostname.clone(),
-            ip_address: local_ip.clone(),
-            agent_version: "2.0.0".to_string(),
-            status: "healthy".to_string(),
-            metrics: HostMetrics {
-                cpu_percent: 0.2,
-                memory_mb: 8.5,
-                spool_queue_depth: spooler.queue_depth(),
-            },
-            config_version: "v1.0".to_string(),
-        };
-
-        match transport.send_heartbeat(&hb_req).await {
-            Ok(hb_resp) => {
-                let task_count = hb_resp.pending_tasks.len();
-                if task_count > 0 {
-                    println!("[ControlPlane] Server dispatched {task_count} task(s)");
-                }
-                for task in hb_resp.pending_tasks {
-                    println!("[ControlPlane] Executing server task: {} (id={})", task.command, task.task_id);
-                    let (exit_code, msg) = execute_remote_task(&task, &local_ip);
-                    println!("[ControlPlane] Result: exit={exit_code} — {msg}");
-
-                    let result = TaskResultPayload {
-                        agent_id: config.agent_id.clone(),
-                        task_id: task.task_id,
-                        status: if exit_code == 0 { "success".into() } else { "failed".into() },
-                        exit_code,
-                        message: msg,
-                        timestamp: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-                    };
-                    let _ = transport.send_task_result(&result).await;
-                }
-            }
-            Err(e) => {
-                // Heartbeat failure is non-fatal — agent continues collecting and spooling
-                eprintln!("[ControlPlane] Heartbeat failed (non-fatal): {e}");
-            }
+        drain_spool(&spooler, &transport, &mut state_cache, &mut next_upload_at).await;
+        } else {
+            println!("[Telemetry] Unchanged baseline; telemetry upload suppressed");
         }
 
         if once_mode {
+            heartbeat_cycle(&config, &local_ip, &transport, &spooler).await;
             println!("[Execution] One-shot cycle complete (--once). Exiting.");
             std::process::exit(0);
         }
 
-        tokio::time::sleep(Duration::from_secs(config.heartbeat_interval_secs)).await;
     }
 
     #[allow(unreachable_code)]

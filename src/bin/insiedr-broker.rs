@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use insiedr_core::core::ipc::{NamedPipeClient, IPC_PIPE_NAME};
 use std::thread;
 use std::time::Duration;

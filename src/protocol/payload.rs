@@ -56,6 +56,22 @@ fn default_true() -> bool {
 }
 
 impl CollectorResult {
+    /// Omit unavailable object fields while retaining zeros, false, empty collections,
+    /// and array positions. This also applies inside nested metric objects.
+    pub fn prune_null_fields(&mut self) {
+        fn prune(value: &mut Value) {
+            match value {
+                Value::Object(fields) => {
+                    fields.retain(|_, value| !value.is_null());
+                    for value in fields.values_mut() { prune(value); }
+                }
+                Value::Array(values) => { for value in values { prune(value); } }
+                _ => {}
+            }
+        }
+        prune(&mut self.metrics);
+    }
+
     pub fn success(
         name: impl Into<String>,
         collected_at: impl Into<String>,
