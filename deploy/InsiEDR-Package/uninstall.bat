@@ -17,17 +17,15 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [*] Stopping InsiEDR Service...
-net stop InsiEDR >nul 2>&1
-timeout /t 2 /nobreak >nul
-
-echo [*] Removing InsiEDR Windows Service registration...
-sc delete InsiEDR >nul 2>&1
-
-echo [*] Terminating lingering helper processes...
+echo [*] Stopping running sensor processes...
 taskkill /F /IM insiedr-service.exe >nul 2>&1
 taskkill /F /IM insiedr-broker.exe >nul 2>&1
 taskkill /F /IM insiedr-watchdog.exe >nul 2>&1
+
+echo [*] Removing auto-start entries...
+schtasks /delete /tn "InsiEDR" /f >nul 2>&1
+reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "InsiEDR" /f >nul 2>&1
+sc delete InsiEDR >nul 2>&1
 
 echo [*] Cleaning installation binaries...
 if exist "C:\Program Files\InsiEDR" (
