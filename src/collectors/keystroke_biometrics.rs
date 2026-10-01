@@ -157,7 +157,7 @@ impl Collector for KeystrokeBiometricsCollector {
     fn name(&self) -> &'static str { "keystroke-collector" }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let arc = get_or_init_state();
 
         let (dwell, flight, backspace_count, total_keys) = {

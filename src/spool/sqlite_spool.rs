@@ -76,7 +76,7 @@ impl SqliteSpooler {
             )?;
         }
 
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         conn.execute(
             "INSERT OR REPLACE INTO telemetry_spool 
              (payload_id, envelope_json, headers_json, priority, created_at, retry_count) 
