@@ -5,5 +5,7 @@
   "key_id": "default",
   "aes_key_base64": "5Ui8tuHn2kDMrCreumXzRVRFjeUg6aB4DzpfBPAactc=",
   "heartbeat_interval_secs": 5,
+  "snapshot_interval_secs": 300,
+  "telemetry_optimization_enabled": true,
   "spool_db_path": "C:\\ProgramData\\InsiEDR\\spool.db"
 }

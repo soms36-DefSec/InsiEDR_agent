@@ -12,6 +12,8 @@ pub struct ConfigFile {
     pub key_id: Option<String>,
     pub aes_key_base64: Option<String>,
     pub heartbeat_interval_secs: Option<u64>,
+    pub snapshot_interval_secs: Option<u64>,
+    pub telemetry_optimization_enabled: Option<bool>,
     pub spool_db_path: Option<String>,
 }
 
@@ -26,6 +28,8 @@ pub struct AgentConfig {
     pub aes_key_bytes: Vec<u8>,
     pub hpke_server_pub_bytes: Vec<u8>,
     pub heartbeat_interval_secs: u64,
+    pub snapshot_interval_secs: u64,
+    pub telemetry_optimization_enabled: bool,
     pub spool_db_path: String,
 }
 
@@ -88,6 +92,14 @@ impl Default for AgentConfig {
             .or_else(|| env::var("INSIEDR_SPOOL_DB_PATH").ok())
             .unwrap_or_else(|| "spool.db".to_string());
 
+        let snapshot_interval_secs = file_cfg.snapshot_interval_secs
+            .or_else(|| env::var("INSIEDR_SNAPSHOT_SECS").ok().and_then(|s| s.parse().ok()))
+            .filter(|seconds| *seconds > 0)
+            .unwrap_or(crate::core::state_cache::DEFAULT_SNAPSHOT_INTERVAL_SECS);
+        let telemetry_optimization_enabled = file_cfg.telemetry_optimization_enabled
+            .or_else(|| env::var("INSIEDR_TELEMETRY_OPTIMIZATION").ok().and_then(|s| s.parse().ok()))
+            .unwrap_or(true);
+
         // Parse AES Key: support custom base64 or fallback to default
         let mut aes_key_bytes = vec![0x42; 32];
         let b64_candidate = file_cfg.aes_key_base64
@@ -113,6 +125,8 @@ impl Default for AgentConfig {
             aes_key_bytes,
             hpke_server_pub_bytes,
             heartbeat_interval_secs,
+            snapshot_interval_secs,
+            telemetry_optimization_enabled,
             spool_db_path,
         }
     }
