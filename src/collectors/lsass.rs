@@ -22,7 +22,7 @@ impl Collector for LsassCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
         // Audits process handles opened to lsass.exe (Security Event 4656/4663)
         CollectorResult::success(

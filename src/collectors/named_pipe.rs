@@ -18,7 +18,7 @@ impl Collector for NamedPipeCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let search_path = windows::core::w!(r"\\.\pipe\*");
         let mut find_data = WIN32_FIND_DATAW::default();
         let mut pipes = Vec::new();

@@ -181,7 +181,7 @@ impl Collector for MemoryScannerCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
         let high_risk_targets = [
             "powershell", "cmd.exe", "wscript", "cscript", "mshta", "rundll32",

@@ -26,7 +26,7 @@ impl Collector for ClipboardCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let current_seq = unsafe { GetClipboardSequenceNumber() };
         let prev_seq = LAST_SEQ.swap(current_seq, Ordering::SeqCst);
 

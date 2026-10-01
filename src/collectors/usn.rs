@@ -28,7 +28,7 @@ impl Collector for UsnCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let sys_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
         let vol_str = format!(r"\\.\{}", sys_drive);
         let volume_path: Vec<u16> = vol_str.encode_utf16().chain(Some(0)).collect();

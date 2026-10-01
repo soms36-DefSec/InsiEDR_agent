@@ -32,7 +32,7 @@ impl Collector for DecoyCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         self.ensure_decoy_exists();
 
         let path = Path::new(self.decoy_path);

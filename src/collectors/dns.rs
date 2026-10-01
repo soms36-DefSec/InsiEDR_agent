@@ -17,7 +17,7 @@ impl Collector for DnsCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let hub = EtwCollectorHub::global();
 
         let suspicious_tlds = [".tk", ".xyz", ".top", ".buzz", ".onion"];

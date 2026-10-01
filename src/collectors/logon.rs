@@ -157,7 +157,7 @@ impl Collector for LogonCollector {
     fn name(&self) -> &'static str { "logon" }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let stats = Self::read_logon_events();
 
         let logon_count       = stats.successful_logons;

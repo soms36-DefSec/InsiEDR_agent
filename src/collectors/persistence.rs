@@ -76,7 +76,7 @@ impl Collector for PersistenceCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut all_entries = Vec::new();
 
         let points = [

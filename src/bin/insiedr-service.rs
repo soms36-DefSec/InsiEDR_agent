@@ -176,7 +176,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // when the server explicitly commands them via heartbeat task downlink.
     loop {
         let payload_id = Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
         // Step A: Collect Telemetry — pure passive observation, zero host interference
         let mut telemetry = TelemetryPayload::with_username(
@@ -281,7 +281,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         status: if exit_code == 0 { "success".into() } else { "failed".into() },
                         exit_code,
                         message: msg,
-                        timestamp: chrono::Utc::now().to_rfc3339(),
+                        timestamp: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
                     };
                     let _ = transport.send_task_result(&result).await;
                 }

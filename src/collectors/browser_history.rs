@@ -172,7 +172,7 @@ impl Collector for BrowserHistoryCollector {
     fn name(&self) -> &'static str { "http" }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let candidates = Self::candidate_db_paths();
 
         // Try each browser DB in order; use the first that succeeds

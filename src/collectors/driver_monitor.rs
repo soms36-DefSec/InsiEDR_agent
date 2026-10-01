@@ -18,7 +18,7 @@ impl Collector for DriverMonitorCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut drivers = Vec::new();
         let mut cb_needed = 0u32;
         let mut driver_ptrs = vec![std::ptr::null_mut::<c_void>(); 1024];

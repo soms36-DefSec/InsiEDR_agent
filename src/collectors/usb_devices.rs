@@ -73,7 +73,7 @@ impl Collector for UsbDeviceCollector {
     fn collect(&self) -> CollectorResult {
         let devices = Self::enumerate_usbstor();
         let count = devices.len();
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
         CollectorResult::success(
             self.name(),

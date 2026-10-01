@@ -42,7 +42,7 @@ impl Collector for FileIntegrityCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut integrity_events = Vec::new();
 
         // 1. Audit critical system network configuration files (e.g. hosts file tampering)

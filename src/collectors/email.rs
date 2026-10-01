@@ -17,7 +17,7 @@ impl Collector for EmailCollector {
     }
 
     fn collect(&self) -> CollectorResult {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut clients_detected = Vec::new();
 
         if let Ok(app_data) = std::env::var("APPDATA") {
